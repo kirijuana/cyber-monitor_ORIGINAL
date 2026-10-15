@@ -38,6 +38,12 @@ export interface DrWebAdapterConfig {
   password: string;
   timeoutMs: number;
   seed?: number;
+  /**
+   * Dr.Web Enterprise Server почти всегда использует self-signed сертификат
+   * на 9081. По умолчанию true (как в продакшене). Для внутренних сетей с
+   * самоподписанным сертификатом поставьте DRWEB_TLS_INSECURE=true в .env.
+   */
+  tlsInsecure?: boolean;
 }
 
 const DAY_MS = 86_400_000;
@@ -64,12 +70,27 @@ export class DrWebAdapter implements SourceAdapter {
   private lastError: string | null = null;
   /** Кэш списка станций (live-режим), mock считает его из snapshot-подобной базы */
   private stationsCache: DrWebStation[] | null = null;
+  /**
+   * Для https + самоподписанного сертификата Dr.Web: свой dispatcher с
+   * rejectUnauthorized=false. Создаётся лениво, только если tlsInsecure=true.
+   */
+  private insecureAgent?: import('undici').Agent;
 
   constructor(
     private readonly cfg: DrWebAdapterConfig,
     private readonly log: FastifyBaseLogger,
   ) {
     this.snapshot = generateMockSnapshot(cfg.seed ?? 20260415);
+  }
+
+  private async getDispatcher(): Promise<import('undici').Dispatcher | undefined> {
+    if (!this.cfg.tlsInsecure || !this.cfg.baseUrl.startsWith('https')) return undefined;
+    if (!this.insecureAgent) {
+      const { Agent } = await import('undici');
+      this.insecureAgent = new Agent({ connect: { rejectUnauthorized: false } });
+      this.log.warn('Dr.Web TLS verification disabled (DRWEB_TLS_INSECURE=true) — self-signed cert mode');
+    }
+    return this.insecureAgent;
   }
 
   /* --------------------------- SourceAdapter API --------------------------- */
@@ -240,7 +261,11 @@ export class DrWebAdapter implements SourceAdapter {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), this.cfg.timeoutMs);
     try {
-      const res = await fetch(url, { method: 'POST', signal: ac.signal });
+      const res = await fetch(url, {
+        method: 'POST',
+        signal: ac.signal,
+        dispatcher: await this.getDispatcher(),
+      } as RequestInit & { dispatcher?: import('undici').Dispatcher });
       this.lastLatencyMs = Date.now() - started;
       if (!res.ok) throw new Error(`Dr.Web HTTP ${res.status}`);
       const body = (await res.json()) as {

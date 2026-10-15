@@ -16,7 +16,8 @@
     "@fastify/cors": "^9.0.1",
     "dotenv": "^16.4.5",
     "fastify": "^4.28.1",
-    "pino": "^9.3.2"
+    "pino": "^9.3.2",
+    "undici": "^7.30.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.9",

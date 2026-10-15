@@ -25,6 +25,7 @@ export const config = {
     drwebBaseUrl: env('DRWEB_BASE_URL', 'http://localhost:9080'),
     drwebUsername: env('DRWEB_USERNAME', 'monitor'),
     drwebPassword: env('DRWEB_PASSWORD', ''),
+    drwebTlsInsecure: env('DRWEB_TLS_INSECURE', 'false') === 'true',
     bitrix24WebhookUrl: env('BITRIX24_WEBHOOK_URL') || undefined,
     mailHost: env('MAIL_HOST') || undefined,
     zabbixApiUrl: env('ZABBIX_API_URL') || undefined,

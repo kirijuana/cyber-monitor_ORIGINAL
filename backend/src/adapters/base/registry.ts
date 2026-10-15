@@ -15,6 +15,8 @@ export interface RegistryConfig {
   drwebBaseUrl: string;
   drwebUsername: string;
   drwebPassword: string;
+  /** Отключить проверку TLS-сертификата Dr.Web (самоподписанные certs во внутренних сетях) */
+  drwebTlsInsecure?: boolean;
   bitrix24WebhookUrl?: string;
   mailHost?: string;
   zabbixApiUrl?: string;
@@ -33,6 +35,7 @@ export class AdapterRegistry {
           username: cfg.drwebUsername,
           password: cfg.drwebPassword,
           timeoutMs: 8_000,
+          tlsInsecure: cfg.drwebTlsInsecure ?? false,
         },
         log.child({ adapter: 'drweb' }),
       ),
