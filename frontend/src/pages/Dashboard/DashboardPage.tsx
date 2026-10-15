@@ -4,12 +4,12 @@
  */
 import { useMemo, useState } from 'react';
 import { RefreshCw, ShieldCheck } from 'lucide-react';
-import type { Period } from '../../entities/types';
-import { useDashboardQuery } from '../../app/App';
+import type { Period, SourceEvent } from '../../entities/types';
+import { useDashboardQuery, useDrWebSnapshotQuery } from '../../app/App';
 import { useHotkeys } from '../../features/hotkeys/useHotkeys';
 import { useVisibilityRefetch } from '../../features/refresh/useAutoRefresh';
 import { APP_CONFIG, PERIODS } from '../../shared/config/constants';
-import { cn, isStale, timeAgo } from '../../shared/lib/format';
+import { cn, isStale, periodDays, timeAgo } from '../../shared/lib/format';
 import { Button } from '../../shared/ui/Button';
 import { LiveIndicator } from '../../shared/ui/LiveIndicator';
 import { EmptyState } from '../../shared/ui/EmptyState';
@@ -27,10 +27,10 @@ function PeriodSwitch({ period, onChange }: { period: Period; onChange: (p: Peri
     <div className="flex rounded-lg border border-line p-0.5" role="tablist" aria-label="Период">
       {PERIODS.map((p) => (
         <button
-          key={p.id}
+          key={p.id as string}
           role="tab"
           aria-selected={period === p.id}
-          onClick={() => onChange(p)}
+          onClick={() => onChange(p.id)}
           className={cn(
             'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
             period === p.id ? 'bg-elevated text-accent' : 'text-muted hover:text-ink',
@@ -46,18 +46,23 @@ function PeriodSwitch({ period, onChange }: { period: Period; onChange: (p: Peri
 export function DashboardPage() {
   const [period, setPeriod] = useState<Period>('30d');
   const query = useDashboardQuery();
+  const snapshotQuery = useDrWebSnapshotQuery();
   const now = useNow(5_000);
   const data = query.data;
 
+  const refetchAll = () => {
+    void Promise.all([query.refetch(), snapshotQuery.refetch()]).then(() => toast.success('Данные обновлены'));
+  };
+
   useVisibilityRefetch(query.refetch);
-  useHotkeys({
-    onRefresh: () => {
-      void query.refetch().then(() => toast.info('Данные обновлены'));
-    },
-  });
+  useHotkeys({ onRefresh: refetchAll });
 
-  const stale = useMemo(() => (data ? isStale(data.generatedAt, APP_CONFIG.staleThresholdMs, now) : false), [data, now]);
+  const stale = useMemo(
+    () => (data ? isStale(data.generatedAt, APP_CONFIG.staleThresholdMs, now) : false),
+    [data, now],
+  );
 
+  /** Map `source.metric` → числовое значение для быстрой сборки KPI. */
   const m = useMemo(() => {
     const map = new Map<string, number>();
     for (const x of data?.metrics ?? []) {
@@ -68,35 +73,59 @@ export function DashboardPage() {
 
   const kpis = useMemo(() => {
     if (!data) return null;
-    const online = m.get('drweb.stations.online') ?? 0;
-    const total = m.get('drweb.stations.total') ?? 0;
-    const offline = m.get('drweb.stations.offline') ?? 0;
-    const threats24 = m.get('drweb.threats.detected_24h') ?? 0;
-    const quarantine = m.get('drweb.quarantine.objects') ?? 0;
-    const newbies = m.get('drweb.stations.newbies') ?? 0;
-    // тренд угроз: сегодня vs вчера — из графика snapshot не нужен, берём из events-агрегата невозможно;
-    // поэтому backend кладёт percent в metadata; для тренда используем delta метрики online за опрос.
-    return { online, total, offline, threats24, quarantine, newbies };
+    return {
+      online: m.get('drweb.stations.online') ?? 0,
+      total: m.get('drweb.stations.total') ?? 0,
+      offline: m.get('drweb.stations.offline') ?? 0,
+      threats24: m.get('drweb.threats.detected_24h') ?? 0,
+      quarantine: m.get('drweb.quarantine.objects') ?? 0,
+      newbies: m.get('drweb.stations.newbies') ?? 0,
+    };
   }, [data, m]);
+
+  /**
+   * Честный тренд угроз: сравниваем сумму detected за период и за предыдущий
+   * такой же период из реальных данных statistics.ds, а не выдуманную дельту.
+   */
+  const threatTrend = useMemo(() => {
+    const threats = snapshotQuery.data?.threats;
+    if (!threats || threats.length < 2) return undefined;
+    const days = Math.min(periodDays(period), Math.floor(threats.length / 2));
+    const cur = threats.slice(-days).reduce((a, t) => a + t.detected, 0);
+    const prev = threats.slice(-days * 2, -days).reduce((a, t) => a + t.detected, 0);
+    return { delta: cur - prev, positiveIsBad: true };
+  }, [snapshotQuery.data, period]);
+
+  const stationSpark = useMemo(() => {
+    const threats = snapshotQuery.data?.threats;
+    if (!threats) return undefined;
+    return threats.slice(-14).map((t) => t.detected);
+  }, [snapshotQuery.data]);
 
   const liveLabel = query.isFetching
     ? 'Синхронизация…'
-    : stale
-      ? `Stale · ${data ? timeAgo(data.generatedAt, now) : 'нет данных'}`
-      : data
-        ? `Live · обновлено ${timeAgo(data.generatedAt, now)}`
-        : 'Ожидание данных';
+    : query.isError && !data
+      ? 'Источник недоступен'
+      : stale
+        ? `Stale · ${data ? timeAgo(data.generatedAt, now) : 'нет данных'}`
+        : data
+          ? `Live · обновлено ${timeAgo(data.generatedAt, now)}`
+          : 'Ожидание данных';
 
-  const incidentColumns: Column<(typeof data extends undefined ? never : NonNullable<typeof data>['incidents'][number])>[] = useMemo(
+  const incidentColumns: Column<SourceEvent>[] = useMemo(
     () => [
       {
         key: 'timestamp',
         header: 'Время',
         sortable: true,
         sortValue: (r) => r.timestamp,
-        render: (r) => <span className="tabular-nums text-muted">{timeAgo(r.timestamp, now)}</span>,
+        render: (r) => (
+          <span className="tabular-nums text-muted" title={r.timestamp}>
+            {timeAgo(r.timestamp, now)}
+          </span>
+        ),
       },
-      { key: 'source', header: 'Источник', render: (r) => <span className="uppercase text-xs text-muted">{r.source}</span> },
+      { key: 'source', header: 'Источник', render: (r) => <span className="text-xs uppercase text-muted">{r.source}</span> },
       {
         key: 'severity',
         header: 'Severity',
@@ -119,7 +148,7 @@ export function DashboardPage() {
         key: 'action',
         header: '',
         render: (r) => (
-          <Button size="sm" onClick={() => toast.info(`Переход к "${r.entity ?? r.title}" будет доступен на странице источника`)}>
+          <Button size="sm" onClick={() => toast.info(`Откройте страницу источника «${r.source}» — раздел по событию "${r.entity ?? r.title}"`)}>
             Открыть
           </Button>
         ),
@@ -136,18 +165,13 @@ export function DashboardPage() {
           <h1 className="text-xl font-semibold tracking-tight">Мониторинг инфраструктуры</h1>
           <LiveIndicator
             className="mt-1"
-            state={query.isFetching ? 'syncing' : query.isError ? 'error' : stale ? 'stale' : 'idle'}
+            state={query.isFetching ? 'syncing' : query.isError && !data ? 'error' : stale ? 'stale' : 'idle'}
             label={liveLabel}
           />
         </div>
         <div className="flex items-center gap-2">
-          {onPeriodChange && <PeriodSwitch period={period} onChange={onPeriodChange} />}
-          <Button
-            onClick={() => {
-              void query.refetch().then(() => toast.success('Обновлено'));
-            }}
-            disabled={query.isFetching}
-          >
+          <PeriodSwitch period={period} onChange={setPeriod} />
+          <Button onClick={refetchAll} disabled={query.isFetching}>
             <RefreshCw className={cn('size-4', query.isFetching && 'animate-spin')} />
             Refresh
             <kbd className="ml-1 hidden rounded border border-line px-1 text-[10px] text-muted md:inline">R</kbd>
@@ -155,7 +179,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* Error / loading */}
+      {/* Backend целиком недоступен — честный empty state, без выдуманных цифр */}
       {query.isError && !data && (
         <EmptyState
           icon={ShieldCheck}
@@ -183,14 +207,15 @@ export function DashboardPage() {
             <KpiCard
               label="Станции Dr.Web"
               value={`${kpis.online}/${kpis.total}`}
-              sub={`offline: ${kpis.offline} · activated охват ${kpis.total ? Math.round((kpis.online / kpis.total) * 100) : 0}%`}
-              severity={kpis.total && kpis.online / kpis.total < 0.8 ? 'warning' : 'ok'}
+              sub={`offline: ${kpis.offline} · охват ${kpis.total ? Math.round((kpis.online / kpis.total) * 100) : 0}%`}
+              severity={kpis.total > 0 && kpis.online / kpis.total < 0.8 ? 'warning' : 'ok'}
             />
             <KpiCard
-              label="Угрозы за 24ч"
+              label={`Угрозы · ${period}`}
               value={kpis.threats24}
-              sub="детектов всего за сутки"
-              trend={{ delta: kpis.threats24 > 30 ? 12 : -5, positiveIsBad: true }}
+              sub="детектов за последние сутки"
+              trend={threatTrend}
+              spark={stationSpark}
               severity={kpis.threats24 > 40 ? 'warning' : 'ok'}
             />
             <KpiCard
@@ -207,8 +232,8 @@ export function DashboardPage() {
       {/* 4. Chart + feed */}
       <section className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2 card p-4">
-          <SectionHeader title="Угрозы за период" right={<PeriodSwitch period={period} onChange={(p) => onPeriodChange?.(p)} />} />
-          <ThreatsChart period={period} loading={query.isLoading} />
+          <SectionHeader title="Угрозы за период" right={<PeriodSwitch period={period} onChange={setPeriod} />} />
+          <ThreatsChart period={period} />
         </div>
         <div className="card p-4">
           <SectionHeader title="Активность" />
@@ -226,7 +251,11 @@ export function DashboardPage() {
             ) : undefined
           }
         />
-        {data && data.incidents.length === 0 ? (
+        {query.isLoading ? (
+          <div className="card p-4">
+            <div className="skeleton h-40" />
+          </div>
+        ) : data && data.incidents.length === 0 ? (
           <div className="card">
             <EmptyState title="Инцидентов нет. Всё под контролем 🟢" hint="Критических событий за текущий период не зарегистрировано." />
           </div>

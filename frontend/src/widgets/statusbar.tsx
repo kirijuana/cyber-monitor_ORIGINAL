@@ -1,11 +1,11 @@
 /** Status bar: карточка одной системы на дашборде. Клик → страница системы. */
 import { useNavigate } from 'react-router-dom';
 import { Activity, Globe2, Mail, ShieldCheck } from 'lucide-react';
-import type { Metric, SourceId, SourceStatus } from '../../entities/types';
-import { HealthBadge } from '../../shared/ui/StatusBadge';
-import { SOURCES } from '../../shared/config/constants';
-import { timeAgo } from '../../shared/lib/format';
-import { Skeleton } from '../../shared/ui/Skeleton';
+import type { Metric, SourceId, SourceStatus } from '../entities/types';
+import { HealthBadge } from '../shared/ui/StatusBadge';
+import { SOURCES } from '../shared/config/constants';
+import { timeAgo } from '../shared/lib/format';
+import { Skeleton } from '../shared/ui/Skeleton';
 
 const ICONS: Record<SourceId, React.ComponentType<{ className?: string }>> = {
   drweb: ShieldCheck,

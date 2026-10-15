@@ -5,9 +5,9 @@
 
 /* -------------------------------- KpiCard ---------------------------------- */
 import { ArrowDownRight, ArrowUpRight } from 'lucide-react';
-import type { Severity } from '../../entities/types';
-import { Sparkline } from '../../shared/ui/Sparkline';
-import { cn } from '../../shared/lib/format';
+import type { Severity } from '../entities/types';
+import { Sparkline } from '../shared/ui/Sparkline';
+import { cn } from '../shared/lib/format';
 
 export function KpiCard({
   label,
@@ -53,10 +53,22 @@ export function KpiCard({
 }
 
 /* ------------------------------ SectionHeader ------------------------------- */
-export function SectionHeader({ title, right }: { title: string; right?: React.ReactNode }) {
+export function SectionHeader({
+  title,
+  caption,
+  right,
+}: {
+  title: string;
+  /**Tech-подпись: имя сценария API / источника данных. Наводит на мысль, откуда цифра. */
+  caption?: string;
+  right?: React.ReactNode;
+}) {
   return (
-    <div className="mb-3 flex items-center justify-between gap-3">
-      <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">{title}</h2>
+    <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">
+        {title}
+        {caption && <span className="ml-2 font-mono text-[10px] normal-case tracking-normal text-muted/70">{caption}</span>}
+      </h2>
       {right}
     </div>
   );

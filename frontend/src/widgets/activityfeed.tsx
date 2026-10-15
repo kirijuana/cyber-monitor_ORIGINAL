@@ -1,9 +1,9 @@
 /** Activity feed: лента событий с иконкой, severity и честным таймстампом. */
 import { AlertTriangle, KeyRound, ShieldAlert, Smartphone, DatabaseBackup, Server } from 'lucide-react';
-import type { EventCategory, SourceEvent } from '../../entities/types';
-import { cn, timeAgo } from '../../shared/lib/format';
-import { EmptyState } from '../../shared/ui/EmptyState';
-import { SkeletonCard } from '../../shared/ui/Skeleton';
+import type { EventCategory, SourceEvent } from '../entities/types';
+import { cn, timeAgo } from '../shared/lib/format';
+import { EmptyState } from '../shared/ui/EmptyState';
+import { SkeletonCard } from '../shared/ui/Skeleton';
 
 const CATEGORY_ICON: Record<EventCategory, React.ComponentType<{ className?: string }>> = {
   threat: ShieldAlert,

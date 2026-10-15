@@ -3,16 +3,16 @@
  * и мультивыбором. Виртуализация — собственная (slice по scrollTop): без внешних
  * зависимостей, работает для >1000 строк; при <=200 строках рендерит всё сразу.
  */
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../lib/format';
 
 export interface Column<T> {
   key: string;
-  header: string;
+  header: ReactNode;
   sortable?: boolean;
   className?: string;
-  render: (row: T) => React.ReactNode;
+  render: (row: T) => ReactNode;
   sortValue?: (row: T) => number | string;
 }
 
