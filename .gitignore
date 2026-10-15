@@ -1,3 +1,26 @@
-tsconfig.tsbuildinfo
+# Зависимости
 node_modules/
+
+# Сборка
+dist/
+build/
+
+# Логи
 *.log
+logs/
+
+# Средовые конфиги (секреты не коммитим!)
+.env
+.env.local
+.env.*.local
+
+# TypeScript / кэш
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+.vite/
+coverage/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
