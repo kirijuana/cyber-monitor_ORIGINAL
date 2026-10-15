@@ -1,4 +1,4 @@
-import type { Period, Severity } from '../entities/types';
+import type { Period, Severity } from '../../entities/types';
 
 export function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ');
